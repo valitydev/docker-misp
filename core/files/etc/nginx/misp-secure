@@ -4,7 +4,7 @@ server {
     root /var/www/MISP/app/webroot;
     index index.php;
 
-    client_max_body_size 50M;
+    client_max_body_size 350M;
 
     # Disable access logs
     access_log off;
@@ -17,10 +17,8 @@ server {
     ssl_session_cache shared:MozSSL:10m;  # about 40000 sessions
     ssl_session_tickets off;
 
-    # intermediate configuration
-    ssl_dhparam /etc/nginx/certs/dhparams.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    # modern configuration
+    ssl_protocols TLSv1.3;
     ssl_prefer_server_ciphers off;
 
     # enable HSTS

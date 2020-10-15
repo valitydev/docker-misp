@@ -39,4 +39,6 @@ COPY --from=builder /wheel /wheel
 COPY --from=builder /usr/local/lib/libfaupl* /usr/local/lib/
 RUN pip install /wheel/*.whl; ldconfig
 
-ENTRYPOINT [ "/usr/local/bin/misp-modules", "-l", "0.0.0.0"]
+EXPOSE 6666
+
+ENTRYPOINT [ "/usr/local/bin/misp-modules", "-l", "::"]

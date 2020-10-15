@@ -6,8 +6,8 @@ change_php_vars(){
         [[ -e $FILE ]] || break
         sed -i "s/memory_limit = .*/memory_limit = 2048M/" "$FILE"
         sed -i "s/max_execution_time = .*/max_execution_time = 300/" "$FILE"
-        sed -i "s/upload_max_filesize = .*/upload_max_filesize = 50M/" "$FILE"
-        sed -i "s/post_max_size = .*/post_max_size = 50M/" "$FILE"
+        sed -i "s/upload_max_filesize = .*/upload_max_filesize = 350M/" "$FILE"
+        sed -i "s/post_max_size = .*/post_max_size = 350M/" "$FILE"
     done
 }
 

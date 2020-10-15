@@ -53,7 +53,12 @@ FROM debian:buster-slim as python-build
 
     # install PyMISP
     RUN git clone --depth 1 https://github.com/MISP/PyMISP.git; \
-        cd PyMISP || exit; python3 setup.py bdist_wheel -d /wheels
+        cd PyMISP || exit; cd pymisp/data && \
+        git submodule update --init && \
+        cd misp-objects && \
+        git pull origin main && \
+        cd ../../../ && \
+        python3 setup.py bdist_wheel -d /wheels
 
     # install pydeep
     RUN git clone --depth 1 https://github.com/coolacid/pydeep.git; \
@@ -92,6 +97,8 @@ ARG PHP_VER
         php-gd \
         php-fpm \
         php-zip \
+        php-intl \
+        php-gnupg \
         # Unsure we need these
         zip unzip \
         && apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
@@ -117,6 +124,8 @@ ARG PHP_VER
         ;phpenmod gnupg \
     # Enable ssdeep we build earlier
         ;phpenmod ssdeep \
+    # Enable intl
+        ;phpenmod intl \
     # To use the scheduler worker for scheduled tasks, do the following:
         ;cp -fa /var/www/MISP/INSTALL/setup/config.php /var/www/MISP/app/Plugin/CakeResque/Config/config.php
 
@@ -144,3 +153,4 @@ ARG PHP_VER
 
 # Change Workdirectory
     WORKDIR /var/www/MISP
+    EXPOSE 80 443

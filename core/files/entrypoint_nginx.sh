@@ -1,12 +1,16 @@
 #!/bin/bash
 
 MISP_APP_CONFIG_PATH=/var/www/MISP/app/Config
+[ -z "$EXTERNAL_BASEURL" ] && EXTERNAL_BASEURL=$HOSTNAME
 [ -z "$MYSQL_HOST" ] && MYSQL_HOST=db
 [ -z "$MYSQL_PORT" ] && MYSQL_PORT=3306
 [ -z "$MYSQL_USER" ] && MYSQL_USER=misp
 [ -z "$MYSQL_PASSWORD" ] && MYSQL_PASSWORD=example
 [ -z "$MYSQL_DATABASE" ] && MYSQL_DATABASE=misp
 [ -z "$REDIS_FQDN" ] && REDIS_FQDN=redis
+[ -z "$REDIS_PORT" ] && REDIS_PORT=6379
+[ -z "$REDIS_DB" ] && REDIS_DB=13
+[ -z "$REDIS_PASSWORD" ] && REDIS_PASSWORD=""
 [ -z "$MISP_MODULES_FQDN" ] && MISP_MODULES_FQDN="http://misp-modules"
 [ -z "$MYSQLCMD" ] && MYSQLCMD="mysql -u $MYSQL_USER -p$MYSQL_PASSWORD -P $MYSQL_PORT -h $MYSQL_HOST -r -N  $MYSQL_DATABASE"
 
@@ -14,7 +18,10 @@ ENTRYPOINT_PID_FILE="/entrypoint_apache.install"
 [ ! -f $ENTRYPOINT_PID_FILE ] && touch $ENTRYPOINT_PID_FILE
 
 setup_cake_config(){
-    sed -i "s/'host' => 'localhost'.*/'host' => '$REDIS_FQDN',          \/\/ Redis server hostname/" "/var/www/MISP/app/Plugin/CakeResque/Config/config.php"
+    CAKERESCUE_CONF="/var/www/MISP/app/Plugin/CakeResque/Config/config.php"
+    sed -i "s/'host' => 'localhost'.*/'host' => '$REDIS_FQDN',/" "$CAKERESCUE_CONF"
+    sed -i "s/'port' => .*/'port' => $REDIS_PORT,/" "$CAKERESCUE_CONF"
+    sed -i "s/'password' => .*/'password' => '$REDIS_PASSWORD',/" "$CAKERESCUE_CONF"
 }
 
 init_misp_config(){
@@ -33,8 +40,14 @@ init_misp_config(){
 
     echo "Configure sane defaults"
     /var/www/MISP/app/Console/cake Admin setSetting "MISP.redis_host" "$REDIS_FQDN"
+    /var/www/MISP/app/Console/cake Admin setSetting "MISP.redis_port" "$REDIS_PORT"
+    /var/www/MISP/app/Console/cake Admin setSetting "MISP.redis_database" "$REDIS_DB"
+    /var/www/MISP/app/Console/cake Admin setSetting "MISP.redis_password" "$REDIS_PASSWORD"
     /var/www/MISP/app/Console/cake Admin setSetting "MISP.baseurl" "$HOSTNAME"
+    /var/www/MISP/app/Console/cake Admin setSetting "MISP.external_baseurl" "$EXTERNAL_BASEURL"
     /var/www/MISP/app/Console/cake Admin setSetting "MISP.python_bin" $(which python3)
+
+    [ -n "$SALT" ] && /var/www/MISP/app/Console/cake Admin setSetting "Security.salt" "$SALT"
 
     /var/www/MISP/app/Console/cake Admin setSetting "Plugin.ZeroMQ_redis_host" "$REDIS_FQDN"
     /var/www/MISP/app/Console/cake Admin setSetting "Plugin.ZeroMQ_enable" true
@@ -48,7 +61,14 @@ init_misp_config(){
     /var/www/MISP/app/Console/cake Admin setSetting "Plugin.Export_services_enable" true
     /var/www/MISP/app/Console/cake Admin setSetting "Plugin.Export_services_url" "$MISP_MODULES_FQDN"
 
-    /var/www/MISP/app/Console/cake Admin setSetting "Plugin.Cortex_services_enable" false
+    if [ -n "$CORTEX_URL" ]; then
+      /var/www/MISP/app/Console/cake Admin setSetting "Plugin.Cortex_services_enable" true
+      /var/www/MISP/app/Console/cake Admin setSetting "Plugin.Cortex_services_url" "$CORTEX_URL"
+      [ -n "$CORTEX_PORT" ] && /var/www/MISP/app/Console/cake Admin setSetting "Plugin.Cortex_services_port" "$CORTEX_PORT"
+      [ -n "$CORTEX_KEY" ] && /var/www/MISP/app/Console/cake Admin setSetting "Plugin.Cortex_authkey" "$CORTEX_KEY"
+    else
+      /var/www/MISP/app/Console/cake Admin setSetting "Plugin.Cortex_services_enable" false
+    fi
 }
 
 init_misp_files(){
@@ -115,19 +135,24 @@ for CERT in cert.pem dhparams.pem key.pem; do
 done
 
 # Things we should do when we have the INITIALIZE Env Flag
-if [[ "$INIT" == true ]]; then
-    echo "Setup MySQL..." && init_mysql
-    echo "Setup MISP files dir..." && init_misp_files
-    echo "Ensure SSL certs exist..." && init_ssl
-fi
+
+echo "Setup MySQL..." && init_mysql
+echo "Setup MISP files dir..." && init_misp_files
+echo "Ensure SSL certs exist..." && init_ssl
 
 # Things that should ALWAYS happen
-echo "Configure Cake | Change Redis host to $REDIS_FQDN ... " && setup_cake_config
+echo "Configure CakeRescue | Change Redis host to $REDIS_FQDN ... " && setup_cake_config
 
 # Things we should do if we're configuring MISP via ENV
 echo "Configure MISP | Initialize misp base config..." && init_misp_config
 
 echo "Configure MISP | Sync app files..." && sync_files
+
+# Work around https://github.com/MISP/MISP/issues/5608
+if [[ ! -f /var/www/MISP/PyMISP/pymisp/data/describeTypes.json ]]; then
+    mkdir -p /var/www/MISP/PyMISP/pymisp/data/
+    ln -s /usr/local/lib/python3.7/dist-packages/pymisp/data/describeTypes.json /var/www/MISP/PyMISP/pymisp/data/describeTypes.json
+fi
 
 echo "Configure MISP | Enforce permissions ..."
 echo "... chown -R www-data.www-data /var/www/MISP ..." && find /var/www/MISP -not -user www-data -exec chown www-data.www-data {} +
@@ -135,12 +160,6 @@ echo "... chmod -R 0750 /var/www/MISP ..." && find /var/www/MISP -perm 550 -type
 echo "... chmod -R g+ws /var/www/MISP/app/tmp ..." && chmod -R g+ws /var/www/MISP/app/tmp
 echo "... chmod -R g+ws /var/www/MISP/app/files ..." && chmod -R g+ws /var/www/MISP/app/files
 echo "... chmod -R g+ws /var/www/MISP/app/files/scripts/tmp ..." && chmod -R g+ws /var/www/MISP/app/files/scripts/tmp
-
-# Work around https://github.com/MISP/MISP/issues/5608
-if [[ ! -f /var/www/MISP/PyMISP/pymisp/data/describeTypes.json ]]; then
-    mkdir -p /var/www/MISP/PyMISP/pymisp/data/
-    ln -s /usr/local/lib/python3.7/dist-packages/pymisp/data/describeTypes.json /var/www/MISP/PyMISP/pymisp/data/describeTypes.json
-fi
 
 if [[ ! -L "/etc/nginx/sites-enabled/misp80" && "$NOREDIR" == true ]]; then
     echo "Configure NGINX | Disabling Port 80 Redirect"

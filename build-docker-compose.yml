@@ -1,15 +1,15 @@
 version: '3'
 services:
   misp:
-    image: coolacid/misp-docker:core-latest
+    image: rbkmoney/misp-core
     build:
-        context: server/.
+        context: core/.
         args:
             - MISP_TAG=${MISP_TAG}
             - PHP_VER=${PHP_VER}
 
   misp-modules:
-    image: coolacid/misp-docker:modules-latest
+    image: rbkmoney/misp-modules
     build:
         context: modules/.
         args:
